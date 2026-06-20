@@ -18,6 +18,10 @@ def detect_source_type(source: str | Path | Any) -> SourceType:
             return "geojson"
         if suffix == ".json":
             return "json"
+        if suffix == ".wkt":
+            return "wkt"
+        if suffix == ".gpx":
+            return "gpx"
         if suffix in {".las", ".laz", ".ply", ".pcd"}:
             return "point-cloud"
         if suffix in {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}:

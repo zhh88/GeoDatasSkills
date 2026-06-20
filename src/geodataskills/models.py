@@ -17,6 +17,8 @@ SourceType = Literal[
     "text",
     "document",
     "api",
+    "wkt",
+    "gpx",
     "unknown",
 ]
 

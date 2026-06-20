@@ -29,6 +29,10 @@ def load_source(source: str | Path | dict[str, Any] | list[dict[str, Any]]) -> t
             if content_type in {"trajectory", "sensor-series", "geojson"}:
                 return content_type, data, original_name
             return source_type, data, original_name
+        if source_type == "wkt":
+            return source_type, path.read_text(encoding="utf-8"), original_name
+        if source_type == "gpx":
+            return source_type, path.read_text(encoding="utf-8"), original_name
         if source_type in {"image", "video", "text", "document"}:
             return source_type, {"uri": str(path), "name": path.name}, original_name
         raise ValueError(f"Unsupported source path type: {source_type}")

@@ -29,6 +29,8 @@ from .quality import validate_object
 from .rules import RuleProfile, evaluate_filter
 from .schema import flatten_records, profile_records
 from .timeutils import make_time
+from .wkt import parse_wkt
+from .gpx import parse_gpx
 
 
 def normalize_loaded(
@@ -66,6 +68,12 @@ def normalize_loaded(
             report.events.append(TransformEvent(level="info", code="nested_json_flattened", message="Nested records were flattened with dot paths"))
     elif source_type in {"trajectory", "sensor-series"}:
         objects = normalize_special_object(data, source_meta)
+        report = TransformReport(input_count=1, output_count=len(objects))
+    elif source_type == "wkt":
+        objects = normalize_wkt(data, source_meta)
+        report = TransformReport(input_count=1, output_count=len(objects))
+    elif source_type == "gpx":
+        objects = normalize_special_object(parse_gpx(data), source_meta)
         report = TransformReport(input_count=1, output_count=len(objects))
     elif source_type in {"image", "video", "text", "document"}:
         objects = normalize_modality_only(data, source_meta)
@@ -242,7 +250,7 @@ def normalize_geojson(data: dict[str, Any], source_meta: DataSourceMeta, rules: 
 
 
 def normalize_special_object(data: dict[str, Any], source_meta: DataSourceMeta) -> list[UnifiedSpatialObject]:
-    if source_meta.source_type == "trajectory":
+    if source_meta.source_type in {"trajectory", "gpx"}:
         points = data.get("points", [])
         coords = [[to_float(p.get("lng", p.get("x"))), to_float(p.get("lat", p.get("y"))), to_float(p.get("z"), 0.0)] for p in points]
         timestamps = [ts for p in points if (ts := make_time(p.get("time"))) and ts.timestamp is not None]
@@ -296,6 +304,24 @@ def normalize_modality_only(data: dict[str, Any], source_meta: DataSourceMeta) -
             attributes=dict(data),
             modality=[UnifiedModality(modality_type=modality_type, uri=uri, content=content, metadata={k: v for k, v in data.items() if k not in {"uri", "content"}})],
             render=RenderHint(preferred_geometry="billboard" if modality_type in {"image", "video"} else "unknown"),
+        )
+    ]
+
+
+def normalize_wkt(data: str, source_meta: DataSourceMeta) -> list[UnifiedSpatialObject]:
+    geometry_type, coordinates = parse_wkt(data)
+    return [
+        UnifiedSpatialObject(
+            id=source_meta.source_id,
+            source=source_meta,
+            geometry=UnifiedGeometry(
+                type=geometry_type,
+                coordinates=coordinates,
+                bbox=compute_bbox_from_coordinates(coordinates),
+                spatial_ref=source_meta.coordinate_system,
+            ),
+            attributes={"wkt": data.strip()},
+            render=infer_render_hint(FieldMapping(), geometry_type=geometry_type),
         )
     ]
 
