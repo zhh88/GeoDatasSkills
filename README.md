@@ -126,6 +126,15 @@ GeoDatasSkills v0.2 开始支持“输入-规则-输出”主链路：
 - 必填校验：支持缺字段标记无效或直接丢弃。
 - 输出模式：支持 `compact / standard / full / debug`。
 - 转换报告：记录输入数量、输出数量、过滤数量、修复数量、字段决策和事件日志。
+- Schema 画像：自动扫描字段类型、缺失数量、示例值、数值范围。
+- 嵌套 JSON 展平：支持 `location.lng`、`metrics.risk` 等点路径字段。
+- 坐标质量检查：检测经纬度越界、疑似经纬度反转、零坐标等问题。
+
+嵌套 JSON 示例：
+
+```bash
+geodataskills examples/sample_nested.json --pretty
+```
 
 ## 模块结构
 

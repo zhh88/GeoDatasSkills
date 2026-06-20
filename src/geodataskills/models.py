@@ -180,6 +180,7 @@ class TransformReport:
     filtered_count: int = 0
     invalid_count: int = 0
     repaired_count: int = 0
+    schema: dict[str, Any] | None = None
     field_decisions: list[FieldDecision] = field(default_factory=list)
     events: list[TransformEvent] = field(default_factory=list)
 

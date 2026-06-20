@@ -26,6 +26,7 @@ from .models import (
 from .parsers import geojson_features
 from .quality import validate_object
 from .rules import RuleProfile, evaluate_filter
+from .schema import flatten_records, profile_records
 from .timeutils import make_time
 
 
@@ -52,10 +53,16 @@ def normalize_loaded(
         objects, report = normalize_geojson(data, source_meta, rules)
     elif source_type in {"csv", "tsv", "json", "api"}:
         records = coerce_records(data)
+        records, nested_detected = flatten_records(records)
+        schema = profile_records(records)
+        schema.nested_detected = nested_detected
         mapping = infer_field_mapping(records)
         mapping, decisions = apply_field_rules(mapping, rules)
         objects, report = normalize_records(records, source_meta, mapping, rules)
         report.field_decisions.extend(decisions)
+        report.schema = schema_to_dict(schema)
+        if nested_detected:
+            report.events.append(TransformEvent(level="info", code="nested_json_flattened", message="Nested records were flattened with dot paths"))
     elif source_type in {"trajectory", "sensor-series"}:
         objects = normalize_special_object(data, source_meta)
         report = TransformReport(input_count=1, output_count=len(objects))
@@ -68,7 +75,7 @@ def normalize_loaded(
 
     for obj in objects:
         if obj.quality is None:
-            obj.quality = validate_object(obj)
+            obj.quality = validate_object(obj, rules)
 
     report.output_count = len(objects)
     report.invalid_count = sum(1 for obj in objects if obj.quality and not obj.quality.valid)
@@ -94,6 +101,26 @@ def coerce_records(data: Any) -> list[dict[str, Any]]:
                 return [item for item in value if isinstance(item, dict)]
         return [data]
     return []
+
+
+def schema_to_dict(schema) -> dict[str, Any]:
+    return {
+        "total_records": schema.total_records,
+        "nested_detected": schema.nested_detected,
+        "fields": [
+            {
+                "name": field.name,
+                "kind": field.kind,
+                "count": field.count,
+                "missing_count": field.missing_count,
+                "unique_count": field.unique_count,
+                "examples": field.examples,
+                "min_value": field.min_value,
+                "max_value": field.max_value,
+            }
+            for field in schema.fields
+        ],
+    }
 
 
 def normalize_records(
@@ -157,7 +184,7 @@ def normalize_records(
                 render=render,
             )
         )
-        obj.quality = validate_object(obj)
+        obj.quality = validate_object(obj, rules)
         if missing_roles:
             obj.quality.valid = obj.quality.valid and rules.validation.allow_invalid
             obj.quality.missing_fields.extend(missing_roles)

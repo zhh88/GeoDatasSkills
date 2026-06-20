@@ -1,0 +1,38 @@
+{
+  "records": [
+    {
+      "id": "N001",
+      "location": {
+        "lng": 120.12,
+        "lat": 30.25,
+        "height": 15
+      },
+      "metrics": {
+        "risk": 88
+      },
+      "meta": {
+        "type": "risk-area",
+        "time": "2026-06-20T10:00:00Z"
+      },
+      "media": {
+        "photo": "photos/n001.jpg",
+        "note": "nested warning point"
+      }
+    },
+    {
+      "id": "N002",
+      "location": {
+        "lng": 30.27,
+        "lat": 120.14,
+        "height": 10
+      },
+      "metrics": {
+        "risk": 62
+      },
+      "meta": {
+        "type": "suspect-coordinate",
+        "time": "2026-06-20T10:03:00Z"
+      }
+    }
+  ]
+}

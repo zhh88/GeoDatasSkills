@@ -30,6 +30,24 @@ def is_lnglat(x: float, y: float) -> bool:
     return -180 <= x <= 180 and -90 <= y <= 90
 
 
+def coordinate_warnings(x: float | None, y: float | None, *, expected: str = "auto") -> list[str]:
+    warnings: list[str] = []
+    if x is None or y is None:
+        return ["coordinate missing"]
+    if x == 0 and y == 0:
+        warnings.append("coordinate is zero origin; verify missing coordinate defaults")
+
+    looks_lnglat = is_lnglat(x, y)
+    looks_reversed_lnglat = is_lnglat(y, x) and not looks_lnglat
+    if expected == "lnglat" and not looks_lnglat:
+        warnings.append("coordinate outside longitude/latitude range")
+    if expected in {"auto", "lnglat"} and looks_reversed_lnglat:
+        warnings.append("coordinate may be latitude/longitude reversed")
+    if expected == "auto" and abs(x) <= 90 and abs(y) > 90 and abs(y) <= 180:
+        warnings.append("coordinate may be latitude/longitude reversed")
+    return warnings
+
+
 def compute_bbox_from_coordinates(coordinates: object) -> tuple[float, float, float, float] | None:
     points = list(flatten_points(coordinates))
     if not points:
