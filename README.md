@@ -129,11 +129,35 @@ GeoDatasSkills v0.2 开始支持“输入-规则-输出”主链路：
 - Schema 画像：自动扫描字段类型、缺失数量、示例值、数值范围。
 - 嵌套 JSON 展平：支持 `location.lng`、`metrics.risk` 等点路径字段。
 - 坐标质量检查：检测经纬度越界、疑似经纬度反转、零坐标等问题。
+- 多模态绑定：支持按对象 ID 或空间最近邻将图片、文本、视频、传感器记录绑定到空间对象。
+- 输出摘要：自动生成对象数、过滤数、修复数、模态数量、质量警告数和字段映射摘要。
 
 嵌套 JSON 示例：
 
 ```bash
 geodataskills examples/sample_nested.json --pretty
+```
+
+多模态绑定示例：
+
+```python
+dataset = skill.ingest(
+    "examples/sample_points.csv",
+    rules={
+        "modality_bindings": [
+            {
+                "source": "examples/sample_modalities.csv",
+                "method": "id",
+                "object_id_field": "id",
+                "modality_id_field": "object_id",
+                "modality_type_field": "modality",
+                "uri_field": "uri",
+                "content_field": "content",
+                "time_field": "time"
+            }
+        ]
+    }
+)
 ```
 
 ## 模块结构

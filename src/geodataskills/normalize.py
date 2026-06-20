@@ -23,6 +23,7 @@ from .models import (
     UnifiedSemantic,
     UnifiedSpatialObject,
 )
+from .modality import apply_modality_bindings
 from .parsers import geojson_features
 from .quality import validate_object
 from .rules import RuleProfile, evaluate_filter
@@ -72,6 +73,9 @@ def normalize_loaded(
     else:
         objects = []
         report = TransformReport(events=[TransformEvent(level="warning", code="unsupported_source", message=f"Unsupported source type: {source_type}")])
+
+    if rules.modality_bindings:
+        apply_modality_bindings(objects, rules.modality_bindings, report)
 
     for obj in objects:
         if obj.quality is None:

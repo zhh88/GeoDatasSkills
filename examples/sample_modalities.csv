@@ -1,0 +1,5 @@
+object_id,modality,uri,content,time
+P001,image,photos/p001_detail.jpg,,2026-06-20 10:05:00
+P001,text,,manual inspection: high temperature confirmed,2026-06-20 10:06:00
+P003,image,photos/p003_detail.jpg,,2026-06-20 10:07:00
+PX99,text,,unmatched record,2026-06-20 10:08:00

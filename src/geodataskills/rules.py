@@ -7,6 +7,7 @@ from typing import Any, Literal
 FilterOp = Literal["eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "exists", "missing"]
 MissingPolicy = Literal["invalid", "drop", "default", "keep"]
 OutputMode = Literal["compact", "standard", "full", "debug"]
+BindMethod = Literal["id", "nearest"]
 
 
 @dataclass(slots=True)
@@ -30,6 +31,22 @@ class OutputRules:
     drop_empty: bool = True
     include_report: bool = True
     include_raw_attributes: bool = True
+    summary: bool = True
+
+
+@dataclass(slots=True)
+class ModalityBindingRule:
+    source: str
+    method: BindMethod = "id"
+    object_id_field: str = "id"
+    modality_id_field: str = "object_id"
+    x_field: str | None = None
+    y_field: str | None = None
+    modality_type_field: str | None = None
+    uri_field: str | None = None
+    content_field: str | None = None
+    time_field: str | None = None
+    max_distance: float | None = None
 
 
 @dataclass(slots=True)
@@ -37,6 +54,7 @@ class RuleProfile:
     fields: dict[str, str] = field(default_factory=dict)
     defaults: dict[str, Any] = field(default_factory=dict)
     filters: list[FilterRule] = field(default_factory=list)
+    modality_bindings: list[ModalityBindingRule] = field(default_factory=list)
     validation: ValidationRules = field(default_factory=ValidationRules)
     output: OutputRules = field(default_factory=OutputRules)
 
@@ -48,12 +66,29 @@ class RuleProfile:
             FilterRule(field=item["field"], op=item.get("op", "eq"), value=item.get("value"))
             for item in raw.get("filters", [])
         ]
+        modality_bindings = [
+            ModalityBindingRule(
+                source=item["source"],
+                method=item.get("method", "id"),
+                object_id_field=item.get("object_id_field", "id"),
+                modality_id_field=item.get("modality_id_field", "object_id"),
+                x_field=item.get("x_field"),
+                y_field=item.get("y_field"),
+                modality_type_field=item.get("modality_type_field"),
+                uri_field=item.get("uri_field"),
+                content_field=item.get("content_field"),
+                time_field=item.get("time_field"),
+                max_distance=item.get("max_distance"),
+            )
+            for item in raw.get("modality_bindings", [])
+        ]
         validation_raw = raw.get("validation", {})
         output_raw = raw.get("output", {})
         return cls(
             fields=dict(raw.get("fields", {})),
             defaults=dict(raw.get("defaults", {})),
             filters=filters,
+            modality_bindings=modality_bindings,
             validation=ValidationRules(
                 required=list(validation_raw.get("required", [])),
                 missing_policy=validation_raw.get("missing_policy", "invalid"),
@@ -65,6 +100,7 @@ class RuleProfile:
                 drop_empty=output_raw.get("drop_empty", True),
                 include_report=output_raw.get("include_report", True),
                 include_raw_attributes=output_raw.get("include_raw_attributes", True),
+                summary=output_raw.get("summary", True),
             ),
         )
 

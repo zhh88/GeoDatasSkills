@@ -29,6 +29,9 @@ def dataset_to_dict(dataset: UnifiedDataSet, output: OutputRules | None = None) 
             ],
         }
 
+    if output.summary:
+        raw["summary"] = _summary(raw)
+
     if not output.include_raw_attributes:
         for obj in raw.get("objects", []):
             obj.pop("attributes", None)
@@ -70,4 +73,31 @@ def _compact_dataset(raw: dict[str, Any]) -> dict[str, Any]:
         "time_range": raw.get("time_range"),
         "statistics": raw.get("statistics"),
         "report": raw.get("report"),
+    }
+
+
+def _summary(raw: dict[str, Any]) -> dict[str, Any]:
+    statistics = raw.get("statistics") or {}
+    report = raw.get("report") or {}
+    objects = raw.get("objects") or []
+    modality_count = sum(len(obj.get("modality") or []) for obj in objects)
+    warning_count = sum(len((obj.get("quality") or {}).get("warnings") or []) for obj in objects)
+    field_map = {
+        item.get("role"): {
+            "field": item.get("field"),
+            "source": item.get("source"),
+            "confidence": item.get("confidence"),
+        }
+        for item in report.get("field_decisions") or []
+        if item.get("role")
+    }
+    return {
+        "object_count": statistics.get("object_count", len(objects)),
+        "input_count": statistics.get("input_count"),
+        "filtered_count": statistics.get("filtered_count"),
+        "invalid_count": statistics.get("invalid_count"),
+        "repaired_count": statistics.get("repaired_count"),
+        "modality_count": modality_count,
+        "quality_warning_count": warning_count,
+        "field_map": field_map,
     }
