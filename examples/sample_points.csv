@@ -1,0 +1,4 @@
+id,lng,lat,height,risk,type,time,photo,description
+P001,120.1201,30.2501,12,82,risk-area,2026-06-20 10:00:00,photos/p001.jpg,temperature warning point
+P002,120.1210,30.2514,18,66,normal-area,2026-06-20 10:01:00,photos/p002.jpg,normal monitoring point
+P003,120.1240,30.2530,25,91,risk-area,2026-06-20 10:02:00,photos/p003.jpg,high risk point

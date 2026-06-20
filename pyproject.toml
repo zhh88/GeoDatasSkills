@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geodataskills"
+version = "0.1.0"
+description = "Multi-source spatial, multimodal, and spatiotemporal data ingestion skill that converts heterogeneous inputs into a unified browser-ready data model."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "GeoDatasSkills contributors" }
+]
+keywords = [
+  "spatial-data",
+  "geojson",
+  "spatiotemporal",
+  "multimodal",
+  "data-ingestion",
+  "digital-twin",
+  "web-3d"
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Software Development :: Libraries"
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+geodataskills = "geodataskills.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
