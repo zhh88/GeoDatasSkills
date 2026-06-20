@@ -11,11 +11,13 @@ from .models import (
 )
 from .rules import FilterRule, OutputRules, RuleProfile, ValidationRules
 from .skill import GeoDataIngestionSkill
+from .visualization import export_html_report
 
 __all__ = [
     "DataQuality",
     "DataSourceMeta",
     "GeoDataIngestionSkill",
+    "export_html_report",
     "FilterRule",
     "OutputRules",
     "RenderHint",

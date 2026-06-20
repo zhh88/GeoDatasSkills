@@ -19,6 +19,13 @@ SourceType = Literal[
     "api",
     "wkt",
     "gpx",
+    "shapefile",
+    "geopackage",
+    "kml",
+    "geotiff",
+    "cityjson",
+    "3d-tiles",
+    "gltf",
     "unknown",
 ]
 

@@ -9,6 +9,7 @@ from .normalize import normalize_loaded
 from .output import dataset_to_dict
 from .parsers import load_source
 from .rules import OutputRules, RuleProfile
+from .visualization import export_html_report
 
 
 class GeoDataIngestionSkill:
@@ -56,3 +57,6 @@ class GeoDataIngestionSkill:
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("w", encoding="utf-8") as handle:
             json.dump(dataset_to_dict(dataset, output_rules), handle, ensure_ascii=False, indent=2 if pretty else None)
+
+    def export_html_report(self, dataset: UnifiedDataSet, path: str | Path, *, title: str = "GeoDatasSkills Report") -> None:
+        export_html_report(dataset, path, title=title)

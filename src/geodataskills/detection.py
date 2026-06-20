@@ -22,8 +22,18 @@ def detect_source_type(source: str | Path | Any) -> SourceType:
             return "wkt"
         if suffix == ".gpx":
             return "gpx"
+        if suffix == ".shp":
+            return "shapefile"
+        if suffix == ".gpkg":
+            return "geopackage"
+        if suffix in {".kml", ".kmz"}:
+            return "kml"
+        if suffix in {".tif", ".tiff", ".geotiff"}:
+            return "geotiff"
         if suffix in {".las", ".laz", ".ply", ".pcd"}:
             return "point-cloud"
+        if suffix in {".glb", ".gltf"}:
+            return "gltf"
         if suffix in {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}:
             return "image"
         if suffix in {".mp4", ".mov", ".avi", ".mkv"}:
@@ -36,6 +46,10 @@ def detect_source_type(source: str | Path | Any) -> SourceType:
         source_type = source.get("type")
         if source_type in {"Feature", "FeatureCollection"}:
             return "geojson"
+        if source_type == "CityJSON" or "CityObjects" in source:
+            return "cityjson"
+        if "asset" in source and "geometricError" in source and "root" in source:
+            return "3d-tiles"
         if "points" in source and isinstance(source["points"], list):
             return "trajectory"
         if "series" in source and isinstance(source["series"], list):

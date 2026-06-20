@@ -83,6 +83,19 @@ def normalize_loaded(
     elif source_type in {"image", "video", "text", "document"}:
         objects = normalize_modality_only(data, source_meta)
         report = TransformReport(input_count=1, output_count=len(objects))
+    elif source_type in {"shapefile", "geopackage", "geotiff", "point-cloud", "kml", "cityjson", "3d-tiles", "gltf"}:
+        objects = normalize_professional_metadata(data, source_meta)
+        report = TransformReport(
+            input_count=1,
+            output_count=len(objects),
+            events=[
+                TransformEvent(
+                    level="warning",
+                    code="professional_format_metadata_only",
+                    message=f"{source_type} was registered as metadata-only; deep conversion requires a specialized adapter.",
+                )
+            ],
+        )
     else:
         objects = []
         report = TransformReport(events=[TransformEvent(level="warning", code="unsupported_source", message=f"Unsupported source type: {source_type}")])
@@ -323,6 +336,18 @@ def normalize_modality_only(data: dict[str, Any], source_meta: DataSourceMeta) -
             attributes=dict(data),
             modality=[UnifiedModality(modality_type=modality_type, uri=uri, content=content, metadata={k: v for k, v in data.items() if k not in {"uri", "content"}})],
             render=RenderHint(preferred_geometry="billboard" if modality_type in {"image", "video"} else "unknown"),
+        )
+    ]
+
+
+def normalize_professional_metadata(data: dict[str, Any], source_meta: DataSourceMeta) -> list[UnifiedSpatialObject]:
+    return [
+        UnifiedSpatialObject(
+            id=source_meta.source_id,
+            source=source_meta,
+            geometry=UnifiedGeometry(type="unknown", coordinates=[]),
+            attributes=dict(data),
+            render=RenderHint(preferred_geometry="unknown"),
         )
     ]
 

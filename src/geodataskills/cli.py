@@ -12,6 +12,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Convert spatial/multimodal/spatiotemporal data into a unified data model.")
     parser.add_argument("source", help="Input CSV, TSV, JSON, GeoJSON, image, video, or text path.")
     parser.add_argument("--out", help="Write unified dataset JSON to this path.")
+    parser.add_argument("--html-report", help="Write standalone HTML visualization report to this path.")
     parser.add_argument("--coordinate-system", default=None, help="Coordinate reference label, e.g. EPSG:4326.")
     parser.add_argument("--dataset-id", default=None, help="Optional dataset id.")
     parser.add_argument("--rules", default=None, help="Optional JSON rule profile path.")
@@ -33,7 +34,12 @@ def main() -> None:
     if args.out:
         skill.export_json(dataset, args.out, pretty=True, output=output_rules)
         print(args.out)
-        return
+
+    if args.html_report:
+        skill.export_html_report(dataset, args.html_report)
+        print(args.html_report)
+        if args.out:
+            return
 
     print(json.dumps(dataset_to_dict(dataset, output_rules), ensure_ascii=False, indent=2 if args.pretty else None))
 
