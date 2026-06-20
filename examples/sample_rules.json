@@ -1,0 +1,35 @@
+{
+  "fields": {
+    "x": "lng",
+    "y": "lat",
+    "z": "height",
+    "value": "risk",
+    "type": "type",
+    "time": "time",
+    "image": "photo",
+    "text": "description"
+  },
+  "defaults": {
+    "z": 0,
+    "type": "unknown"
+  },
+  "filters": [
+    {
+      "field": "risk",
+      "op": "gte",
+      "value": 70
+    }
+  ],
+  "validation": {
+    "required": ["x", "y"],
+    "missing_policy": "invalid",
+    "coordinate_range": "lnglat",
+    "allow_invalid": true
+  },
+  "output": {
+    "mode": "standard",
+    "drop_empty": true,
+    "include_report": true,
+    "include_raw_attributes": true
+  }
+}

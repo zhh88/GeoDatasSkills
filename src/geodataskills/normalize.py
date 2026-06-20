@@ -12,8 +12,11 @@ from .models import (
     DatasetBounds,
     DatasetStatistics,
     DatasetTimeRange,
+    FieldDecision,
     RenderHint,
     SourceType,
+    TransformEvent,
+    TransformReport,
     UnifiedDataSet,
     UnifiedGeometry,
     UnifiedModality,
@@ -22,6 +25,7 @@ from .models import (
 )
 from .parsers import geojson_features
 from .quality import validate_object
+from .rules import RuleProfile, evaluate_filter
 from .timeutils import make_time
 
 
@@ -32,7 +36,9 @@ def normalize_loaded(
     original_name: str | None = None,
     coordinate_system: str | None = None,
     dataset_id: str | None = None,
+    rules: RuleProfile | None = None,
 ) -> UnifiedDataSet:
+    rules = rules or RuleProfile()
     imported_at = int(time.time() * 1000)
     source_meta = DataSourceMeta(
         source_id=dataset_id or str(uuid.uuid4()),
@@ -43,27 +49,38 @@ def normalize_loaded(
     )
 
     if source_type == "geojson":
-        objects = normalize_geojson(data, source_meta)
+        objects, report = normalize_geojson(data, source_meta, rules)
     elif source_type in {"csv", "tsv", "json", "api"}:
         records = coerce_records(data)
         mapping = infer_field_mapping(records)
-        objects = normalize_records(records, source_meta, mapping)
+        mapping, decisions = apply_field_rules(mapping, rules)
+        objects, report = normalize_records(records, source_meta, mapping, rules)
+        report.field_decisions.extend(decisions)
     elif source_type in {"trajectory", "sensor-series"}:
         objects = normalize_special_object(data, source_meta)
+        report = TransformReport(input_count=1, output_count=len(objects))
     elif source_type in {"image", "video", "text", "document"}:
         objects = normalize_modality_only(data, source_meta)
+        report = TransformReport(input_count=1, output_count=len(objects))
     else:
         objects = []
+        report = TransformReport(events=[TransformEvent(level="warning", code="unsupported_source", message=f"Unsupported source type: {source_type}")])
 
     for obj in objects:
-        obj.quality = validate_object(obj)
+        if obj.quality is None:
+            obj.quality = validate_object(obj)
 
+    report.output_count = len(objects)
+    report.invalid_count = sum(1 for obj in objects if obj.quality and not obj.quality.valid)
+    quality_repaired = sum(1 for obj in objects if obj.quality and obj.quality.warnings and obj.quality.valid)
+    report.repaired_count += quality_repaired
     return UnifiedDataSet(
         dataset_id=source_meta.source_id,
         objects=objects,
         bounds=compute_dataset_bounds(objects),
         time_range=compute_time_range(objects),
-        statistics=compute_statistics(objects),
+        statistics=compute_statistics(objects, report),
+        report=report,
     )
 
 
@@ -83,12 +100,29 @@ def normalize_records(
     records: list[dict[str, Any]],
     source_meta: DataSourceMeta,
     mapping: FieldMapping,
-) -> list[UnifiedSpatialObject]:
+    rules: RuleProfile,
+) -> tuple[list[UnifiedSpatialObject], TransformReport]:
     objects: list[UnifiedSpatialObject] = []
+    report = TransformReport(input_count=len(records))
     for index, row in enumerate(records):
-        x = to_float(row.get(mapping.x_field), 0.0) if mapping.x_field else 0.0
-        y = to_float(row.get(mapping.y_field), 0.0) if mapping.y_field else 0.0
-        z = to_float(row.get(mapping.z_field), 0.0) if mapping.z_field else 0.0
+        if not passes_filters(row, rules):
+            report.filtered_count += 1
+            report.events.append(TransformEvent(level="info", code="row_filtered", message="Row filtered by rules", row_index=index))
+            continue
+
+        row = apply_defaults(row, mapping, rules, report, index)
+        missing_roles = missing_required_roles(row, mapping, rules)
+        if missing_roles and rules.validation.missing_policy == "drop":
+            report.filtered_count += 1
+            report.events.append(
+                TransformEvent(level="warning", code="row_dropped_missing_required", message=f"Missing required fields: {', '.join(missing_roles)}", row_index=index)
+            )
+            continue
+
+        has_xy = has_value(row, mapping.x_field) and has_value(row, mapping.y_field)
+        x = to_float(row.get(mapping.x_field), 0.0) if mapping.x_field and has_value(row, mapping.x_field) else 0.0
+        y = to_float(row.get(mapping.y_field), 0.0) if mapping.y_field and has_value(row, mapping.y_field) else 0.0
+        z = to_float(row.get(mapping.z_field), 0.0) if mapping.z_field and has_value(row, mapping.z_field) else 0.0
         object_id = str(row.get(mapping.id_field) or f"{source_meta.source_id}-{index}")
 
         modality = []
@@ -106,14 +140,14 @@ def normalize_records(
         render = infer_render_hint(mapping)
 
         objects.append(
-            UnifiedSpatialObject(
+            obj := UnifiedSpatialObject(
                 id=object_id,
                 source=source_meta,
                 geometry=UnifiedGeometry(
-                    type="point",
-                    coordinates=[x, y, z],
-                    bbox=(x, y, x, y),
-                    altitude=z,
+                    type="point" if has_xy else "unknown",
+                    coordinates=[x, y, z] if has_xy else [],
+                    bbox=(x, y, x, y) if has_xy else None,
+                    altitude=z if has_xy else None,
                     spatial_ref=source_meta.coordinate_system,
                 ),
                 time=make_time(row.get(mapping.time_field)) if mapping.time_field else None,
@@ -123,18 +157,37 @@ def normalize_records(
                 render=render,
             )
         )
-    return objects
+        obj.quality = validate_object(obj)
+        if missing_roles:
+            obj.quality.valid = obj.quality.valid and rules.validation.allow_invalid
+            obj.quality.missing_fields.extend(missing_roles)
+            obj.quality.warnings.append(f"Missing required fields: {', '.join(missing_roles)}")
+            obj.quality.confidence = min(obj.quality.confidence, 0.5)
+            report.events.append(
+                TransformEvent(level="warning", code="missing_required", message=f"Missing required fields: {', '.join(missing_roles)}", row_index=index)
+            )
+    return objects, report
 
 
-def normalize_geojson(data: dict[str, Any], source_meta: DataSourceMeta) -> list[UnifiedSpatialObject]:
+def normalize_geojson(data: dict[str, Any], source_meta: DataSourceMeta, rules: RuleProfile | None = None) -> tuple[list[UnifiedSpatialObject], TransformReport]:
+    rules = rules or RuleProfile()
     objects: list[UnifiedSpatialObject] = []
-    for index, feature in enumerate(geojson_features(data)):
+    features = geojson_features(data)
+    report = TransformReport(input_count=len(features))
+    for index, feature in enumerate(features):
         geometry = feature.get("geometry") or {}
         properties = dict(feature.get("properties") or {})
+        if not passes_filters(properties, rules):
+            report.filtered_count += 1
+            report.events.append(TransformEvent(level="info", code="feature_filtered", message="Feature filtered by rules", row_index=index))
+            continue
         geometry_type = map_geojson_geometry(geometry.get("type"))
         coordinates = geometry.get("coordinates", [])
         bbox = compute_bbox_from_coordinates(coordinates)
         mapping = infer_field_mapping([properties]) if properties else FieldMapping()
+        mapping, decisions = apply_field_rules(mapping, rules)
+        report.field_decisions.extend(decisions)
+        properties = apply_defaults(properties, mapping, rules, report, index)
         objects.append(
             UnifiedSpatialObject(
                 id=str(feature.get("id") or properties.get("id") or f"{source_meta.source_id}-{index}"),
@@ -154,7 +207,7 @@ def normalize_geojson(data: dict[str, Any], source_meta: DataSourceMeta) -> list
                 render=infer_render_hint(mapping, geometry_type=geometry_type),
             )
         )
-    return objects
+    return objects, report
 
 
 def normalize_special_object(data: dict[str, Any], source_meta: DataSourceMeta) -> list[UnifiedSpatialObject]:
@@ -275,13 +328,107 @@ def compute_time_range(objects: list[UnifiedSpatialObject]) -> DatasetTimeRange 
     return DatasetTimeRange(start=min(values), end=max(values))
 
 
-def compute_statistics(objects: list[UnifiedSpatialObject]) -> DatasetStatistics:
+def compute_statistics(objects: list[UnifiedSpatialObject], report: TransformReport | None = None) -> DatasetStatistics:
     geometry_types = Counter(obj.geometry.type for obj in objects)
     source_types = Counter(obj.source.source_type for obj in objects)
     invalid = sum(1 for obj in objects if obj.quality and not obj.quality.valid)
     return DatasetStatistics(
         object_count=len(objects),
+        input_count=report.input_count if report else len(objects),
+        filtered_count=report.filtered_count if report else 0,
+        repaired_count=report.repaired_count if report else 0,
         geometry_types=dict(geometry_types),
         source_types=dict(source_types),
         invalid_count=invalid,
     )
+
+
+def apply_field_rules(mapping: FieldMapping, rules: RuleProfile) -> tuple[FieldMapping, list[FieldDecision]]:
+    decisions: list[FieldDecision] = []
+    role_to_attr = {
+        "id": "id_field",
+        "x": "x_field",
+        "y": "y_field",
+        "z": "z_field",
+        "time": "time_field",
+        "value": "value_field",
+        "type": "type_field",
+        "image": "image_field",
+        "video": "video_field",
+        "text": "text_field",
+    }
+    for role, attr in role_to_attr.items():
+        selected = rules.fields.get(role)
+        if selected:
+            setattr(mapping, attr, selected)
+            decisions.append(FieldDecision(role=role, field=selected, source="rule", confidence=1.0))
+        else:
+            inferred = getattr(mapping, attr)
+            decisions.append(FieldDecision(role=role, field=inferred, source="inferred" if inferred else "missing", confidence=0.75 if inferred else 0.0))
+
+    for role, default in rules.defaults.items():
+        if role in role_to_attr and getattr(mapping, role_to_attr[role]) is None:
+            virtual_field = f"__default_{role}"
+            setattr(mapping, role_to_attr[role], virtual_field)
+            decisions.append(FieldDecision(role=role, field=virtual_field, source="default", confidence=0.9))
+    return mapping, decisions
+
+
+def passes_filters(row: dict[str, Any], rules: RuleProfile) -> bool:
+    return all(evaluate_filter(row, rule) for rule in rules.filters)
+
+
+def apply_defaults(
+    row: dict[str, Any],
+    mapping: FieldMapping,
+    rules: RuleProfile,
+    report: TransformReport,
+    row_index: int,
+) -> dict[str, Any]:
+    result = dict(row)
+    role_to_attr = {
+        "id": "id_field",
+        "x": "x_field",
+        "y": "y_field",
+        "z": "z_field",
+        "time": "time_field",
+        "value": "value_field",
+        "type": "type_field",
+        "image": "image_field",
+        "video": "video_field",
+        "text": "text_field",
+    }
+    for key, default_value in rules.defaults.items():
+        field = getattr(mapping, role_to_attr[key], None) if key in role_to_attr else key
+        if field and not has_value(result, field):
+            result[field] = default_value
+            report.repaired_count += 1
+            report.events.append(
+                TransformEvent(level="info", code="default_applied", message=f"Default applied for {key}", row_index=row_index, field=field)
+            )
+    return result
+
+
+def missing_required_roles(row: dict[str, Any], mapping: FieldMapping, rules: RuleProfile) -> list[str]:
+    role_to_attr = {
+        "id": "id_field",
+        "x": "x_field",
+        "y": "y_field",
+        "z": "z_field",
+        "time": "time_field",
+        "value": "value_field",
+        "type": "type_field",
+        "image": "image_field",
+        "video": "video_field",
+        "text": "text_field",
+    }
+    missing: list[str] = []
+    for role in rules.validation.required:
+        field = getattr(mapping, role_to_attr.get(role, ""), None)
+        if not field or not has_value(row, field):
+            missing.append(role)
+    return missing
+
+
+def has_value(row: dict[str, Any], field: str | None) -> bool:
+    return bool(field) and field in row and row.get(field) not in (None, "")

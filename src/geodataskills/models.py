@@ -148,9 +148,40 @@ class DatasetTimeRange:
 @dataclass(slots=True)
 class DatasetStatistics:
     object_count: int
+    input_count: int = 0
+    filtered_count: int = 0
+    repaired_count: int = 0
     geometry_types: dict[str, int] = field(default_factory=dict)
     source_types: dict[str, int] = field(default_factory=dict)
     invalid_count: int = 0
+
+
+@dataclass(slots=True)
+class TransformEvent:
+    level: Literal["info", "warning", "error"]
+    code: str
+    message: str
+    row_index: int | None = None
+    field: str | None = None
+
+
+@dataclass(slots=True)
+class FieldDecision:
+    role: str
+    field: str | None
+    source: Literal["rule", "inferred", "default", "missing"]
+    confidence: float = 1.0
+
+
+@dataclass(slots=True)
+class TransformReport:
+    input_count: int = 0
+    output_count: int = 0
+    filtered_count: int = 0
+    invalid_count: int = 0
+    repaired_count: int = 0
+    field_decisions: list[FieldDecision] = field(default_factory=list)
+    events: list[TransformEvent] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -160,6 +191,7 @@ class UnifiedDataSet:
     bounds: DatasetBounds | None = None
     time_range: DatasetTimeRange | None = None
     statistics: DatasetStatistics | None = None
+    report: TransformReport | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

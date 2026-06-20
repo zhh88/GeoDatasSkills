@@ -39,6 +39,7 @@ CLI 示例：
 ```bash
 geodataskills examples/sample_points.csv --out outputs/sample_dataset.json
 geodataskills examples/sample_geojson.json --pretty
+geodataskills examples/sample_points.csv --rules examples/sample_rules.json --output-mode compact --pretty
 ```
 
 Python API：
@@ -52,6 +53,44 @@ dataset = skill.ingest("examples/sample_points.csv")
 print(dataset.statistics.object_count)
 print(dataset.bounds)
 print(dataset.objects[0].geometry)
+```
+
+规则驱动接入：
+
+```python
+dataset = skill.ingest(
+    "examples/sample_points.csv",
+    rules={
+        "fields": {
+            "x": "lng",
+            "y": "lat",
+            "z": "height",
+            "value": "risk",
+            "type": "type",
+            "time": "time",
+            "image": "photo",
+            "text": "description"
+        },
+        "defaults": {
+            "z": 0,
+            "type": "unknown"
+        },
+        "filters": [
+            {"field": "risk", "op": "gte", "value": 70}
+        ],
+        "validation": {
+            "required": ["x", "y"],
+            "missing_policy": "invalid"
+        },
+        "output": {
+            "mode": "standard",
+            "drop_empty": True,
+            "include_report": True
+        }
+    }
+)
+
+print(dataset.report)
 ```
 
 ## 统一模型
@@ -75,6 +114,18 @@ UnifiedDataSet(
 - `semantic`：分类、标签、事件类型和关联关系
 - `render`：后续三维建模和渲染提示
 - `quality`：坐标、时间、字段完整性和可信度
+- `report`：字段识别、过滤、缺省补充、无效数据等转换报告
+
+## v0.2 规则能力
+
+GeoDatasSkills v0.2 开始支持“输入-规则-输出”主链路：
+
+- 字段覆盖：用户可以显式指定 `x/y/z/time/value/type/image/text` 对应字段。
+- 缺省值：缺少高度、分类、数值等字段时可按规则补充。
+- 筛选：支持 `eq/ne/gt/gte/lt/lte/in/not_in/exists/missing`。
+- 必填校验：支持缺字段标记无效或直接丢弃。
+- 输出模式：支持 `compact / standard / full / debug`。
+- 转换报告：记录输入数量、输出数量、过滤数量、修复数量、字段决策和事件日志。
 
 ## 模块结构
 
@@ -104,6 +155,12 @@ GeoDatasSkills 可以作为 Web 端空间大数据三维建模系统的第一层
 - 资源回收与性能监测
 
 ## 运行测试
+
+```bash
+python -m unittest discover -s tests -p "test*_unittest.py" -v
+```
+
+如果安装了 `pytest`，也可以运行：
 
 ```bash
 pytest

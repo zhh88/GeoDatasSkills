@@ -6,7 +6,9 @@ from typing import Any
 
 from .models import UnifiedDataSet, UnifiedModality, UnifiedSpatialObject
 from .normalize import normalize_loaded
+from .output import dataset_to_dict
 from .parsers import load_source
+from .rules import OutputRules, RuleProfile
 
 
 class GeoDataIngestionSkill:
@@ -20,7 +22,9 @@ class GeoDataIngestionSkill:
         *,
         coordinate_system: str | None = None,
         dataset_id: str | None = None,
+        rules: RuleProfile | dict[str, Any] | None = None,
     ) -> UnifiedDataSet:
+        profile = rules if isinstance(rules, RuleProfile) else RuleProfile.from_dict(rules)
         source_type, data, original_name = load_source(source)
         return normalize_loaded(
             data,
@@ -28,6 +32,7 @@ class GeoDataIngestionSkill:
             original_name=original_name,
             coordinate_system=coordinate_system,
             dataset_id=dataset_id,
+            rules=profile,
         )
 
     def attach_modality(
@@ -38,8 +43,16 @@ class GeoDataIngestionSkill:
         obj.modality.append(modality)
         return obj
 
-    def export_json(self, dataset: UnifiedDataSet, path: str | Path, *, pretty: bool = True) -> None:
+    def export_json(
+        self,
+        dataset: UnifiedDataSet,
+        path: str | Path,
+        *,
+        pretty: bool = True,
+        output: OutputRules | dict[str, Any] | None = None,
+    ) -> None:
+        output_rules = output if isinstance(output, OutputRules) else OutputRules(**output) if output else OutputRules()
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("w", encoding="utf-8") as handle:
-            json.dump(dataset.to_dict(), handle, ensure_ascii=False, indent=2 if pretty else None)
+            json.dump(dataset_to_dict(dataset, output_rules), handle, ensure_ascii=False, indent=2 if pretty else None)
