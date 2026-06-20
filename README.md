@@ -133,6 +133,7 @@ GeoDatasSkills v0.2 开始支持“输入-规则-输出”主链路：
 - 坐标质量检查：检测经纬度越界、疑似经纬度反转、零坐标等问题。
 - 多模态绑定：支持按对象 ID 或空间最近邻将图片、文本、视频、传感器记录绑定到空间对象。
 - 输出摘要：自动生成对象数、过滤数、修复数、模态数量、质量警告数和字段映射摘要。
+- 数据治理：支持单位转换、属性白名单/黑名单、polygon 自动闭合、重复点清理、轨迹按时间排序。
 
 嵌套 JSON 示例：
 
@@ -140,6 +141,26 @@ GeoDatasSkills v0.2 开始支持“输入-规则-输出”主链路：
 geodataskills examples/sample_nested.json --pretty
 geodataskills examples/sample_polygon.wkt --pretty
 geodataskills examples/sample_track.gpx --pretty
+```
+
+数据治理规则示例：
+
+```python
+dataset = skill.ingest(
+    rows,
+    rules={
+        "fields": {"x": "lng", "y": "lat", "z": "height_cm"},
+        "unit_conversions": [
+            {"field": "height_cm", "from_unit": "cm", "to_unit": "m"}
+        ],
+        "attribute_exclude": ["internal_note"],
+        "geometry": {
+            "close_polygons": True,
+            "remove_duplicate_points": True,
+            "sort_trajectory_by_time": True
+        }
+    }
+)
 ```
 
 多模态绑定示例：

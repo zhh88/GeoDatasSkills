@@ -35,6 +35,20 @@ class OutputRules:
 
 
 @dataclass(slots=True)
+class UnitConversionRule:
+    field: str
+    from_unit: str
+    to_unit: str
+
+
+@dataclass(slots=True)
+class GeometryRules:
+    close_polygons: bool = True
+    remove_duplicate_points: bool = True
+    sort_trajectory_by_time: bool = True
+
+
+@dataclass(slots=True)
 class ModalityBindingRule:
     source: str
     method: BindMethod = "id"
@@ -54,6 +68,10 @@ class RuleProfile:
     fields: dict[str, str] = field(default_factory=dict)
     defaults: dict[str, Any] = field(default_factory=dict)
     filters: list[FilterRule] = field(default_factory=list)
+    unit_conversions: list[UnitConversionRule] = field(default_factory=list)
+    attribute_include: list[str] = field(default_factory=list)
+    attribute_exclude: list[str] = field(default_factory=list)
+    geometry: GeometryRules = field(default_factory=GeometryRules)
     modality_bindings: list[ModalityBindingRule] = field(default_factory=list)
     validation: ValidationRules = field(default_factory=ValidationRules)
     output: OutputRules = field(default_factory=OutputRules)
@@ -82,12 +100,25 @@ class RuleProfile:
             )
             for item in raw.get("modality_bindings", [])
         ]
+        unit_conversions = [
+            UnitConversionRule(field=item["field"], from_unit=item["from_unit"], to_unit=item["to_unit"])
+            for item in raw.get("unit_conversions", [])
+        ]
+        geometry_raw = raw.get("geometry", {})
         validation_raw = raw.get("validation", {})
         output_raw = raw.get("output", {})
         return cls(
             fields=dict(raw.get("fields", {})),
             defaults=dict(raw.get("defaults", {})),
             filters=filters,
+            unit_conversions=unit_conversions,
+            attribute_include=list(raw.get("attribute_include", [])),
+            attribute_exclude=list(raw.get("attribute_exclude", [])),
+            geometry=GeometryRules(
+                close_polygons=geometry_raw.get("close_polygons", True),
+                remove_duplicate_points=geometry_raw.get("remove_duplicate_points", True),
+                sort_trajectory_by_time=geometry_raw.get("sort_trajectory_by_time", True),
+            ),
             modality_bindings=modality_bindings,
             validation=ValidationRules(
                 required=list(validation_raw.get("required", [])),

@@ -6,6 +6,7 @@ from collections import Counter
 from typing import Any
 
 from .coordinates import compute_bbox_from_coordinates, to_float
+from .attributes import apply_attribute_rules
 from .fields import FieldMapping, infer_field_mapping
 from .models import (
     DataSourceMeta,
@@ -24,6 +25,7 @@ from .models import (
     UnifiedSpatialObject,
 )
 from .modality import apply_modality_bindings
+from .geometry import clean_coordinates
 from .parsers import geojson_features
 from .quality import validate_object
 from .rules import RuleProfile, evaluate_filter
@@ -67,14 +69,17 @@ def normalize_loaded(
         if nested_detected:
             report.events.append(TransformEvent(level="info", code="nested_json_flattened", message="Nested records were flattened with dot paths"))
     elif source_type in {"trajectory", "sensor-series"}:
-        objects = normalize_special_object(data, source_meta)
-        report = TransformReport(input_count=1, output_count=len(objects))
+        report = TransformReport(input_count=1)
+        objects = normalize_special_object(data, source_meta, rules, report)
+        report.output_count = len(objects)
     elif source_type == "wkt":
-        objects = normalize_wkt(data, source_meta)
-        report = TransformReport(input_count=1, output_count=len(objects))
+        report = TransformReport(input_count=1)
+        objects = normalize_wkt(data, source_meta, rules, report)
+        report.output_count = len(objects)
     elif source_type == "gpx":
-        objects = normalize_special_object(parse_gpx(data), source_meta)
-        report = TransformReport(input_count=1, output_count=len(objects))
+        report = TransformReport(input_count=1)
+        objects = normalize_special_object(parse_gpx(data), source_meta, rules, report)
+        report.output_count = len(objects)
     elif source_type in {"image", "video", "text", "document"}:
         objects = normalize_modality_only(data, source_meta)
         report = TransformReport(input_count=1, output_count=len(objects))
@@ -150,6 +155,7 @@ def normalize_records(
             continue
 
         row = apply_defaults(row, mapping, rules, report, index)
+        row = apply_attribute_rules(row, rules, report, index)
         missing_roles = missing_required_roles(row, mapping, rules)
         if missing_roles and rules.validation.missing_policy == "drop":
             report.filtered_count += 1
@@ -227,6 +233,9 @@ def normalize_geojson(data: dict[str, Any], source_meta: DataSourceMeta, rules: 
         mapping, decisions = apply_field_rules(mapping, rules)
         report.field_decisions.extend(decisions)
         properties = apply_defaults(properties, mapping, rules, report, index)
+        properties = apply_attribute_rules(properties, rules, report, index)
+        coordinates = clean_coordinates(coordinates, geometry_type, rules.geometry, report)
+        bbox = compute_bbox_from_coordinates(coordinates)
         objects.append(
             UnifiedSpatialObject(
                 id=str(feature.get("id") or properties.get("id") or f"{source_meta.source_id}-{index}"),
@@ -249,10 +258,20 @@ def normalize_geojson(data: dict[str, Any], source_meta: DataSourceMeta, rules: 
     return objects, report
 
 
-def normalize_special_object(data: dict[str, Any], source_meta: DataSourceMeta) -> list[UnifiedSpatialObject]:
+def normalize_special_object(
+    data: dict[str, Any],
+    source_meta: DataSourceMeta,
+    rules: RuleProfile | None = None,
+    report: TransformReport | None = None,
+) -> list[UnifiedSpatialObject]:
+    rules = rules or RuleProfile()
+    report = report or TransformReport(input_count=1)
     if source_meta.source_type in {"trajectory", "gpx"}:
         points = data.get("points", [])
+        if rules.geometry.sort_trajectory_by_time:
+            points = sorted(points, key=lambda item: make_time(item.get("time")).timestamp if make_time(item.get("time")) else 0)
         coords = [[to_float(p.get("lng", p.get("x"))), to_float(p.get("lat", p.get("y"))), to_float(p.get("z"), 0.0)] for p in points]
+        coords = clean_coordinates(coords, "trajectory", rules.geometry, report)
         timestamps = [ts for p in points if (ts := make_time(p.get("time"))) and ts.timestamp is not None]
         return [
             UnifiedSpatialObject(
@@ -308,8 +327,16 @@ def normalize_modality_only(data: dict[str, Any], source_meta: DataSourceMeta) -
     ]
 
 
-def normalize_wkt(data: str, source_meta: DataSourceMeta) -> list[UnifiedSpatialObject]:
+def normalize_wkt(
+    data: str,
+    source_meta: DataSourceMeta,
+    rules: RuleProfile | None = None,
+    report: TransformReport | None = None,
+) -> list[UnifiedSpatialObject]:
+    rules = rules or RuleProfile()
+    report = report or TransformReport(input_count=1)
     geometry_type, coordinates = parse_wkt(data)
+    coordinates = clean_coordinates(coordinates, geometry_type, rules.geometry, report)
     return [
         UnifiedSpatialObject(
             id=source_meta.source_id,
